@@ -11,7 +11,7 @@ try:
         print(f"Connected to COM4")
     except serial.SerialException as e:
         # If COM4 fails, try common alternatives
-        ports_to_try = ['COM3', 'COM5', '/dev/ttyUSB0', '/dev/ttyACM0']
+        ports_to_try = ['COM1', 'COM2', 'COM3', 'COM5', '/dev/ttyUSB0', '/dev/ttyACM0']
         for port in ports_to_try:
             try:
                 print(f"Trying to connect to {port}...")
@@ -75,6 +75,8 @@ def process_command(command):
                 autopy.mouse.click()  # Default is left click
                 left_click_active = True
                 last_left_click_time = current_time
+            else:
+                print("discarded left click")
         except Exception as e:
             print(f"Error with left click: {e}")
     
@@ -86,6 +88,9 @@ def process_command(command):
                 autopy.mouse.click(autopy.mouse.Button.RIGHT)
                 right_click_active = True
                 last_right_click_time = current_time
+            else:
+                print("discarded right click")
+                
         except Exception as e:
             print(f"Error with right click: {e}")
     
