@@ -101,7 +101,27 @@ const int SOFT_SIP_THRESHOLD = 410;  // Threshold for scroll down
 const int NEUTRAL_MIN = 460;         // Lower bound of neutral zone
 const int NEUTRAL_MAX = 550;         // Upper bound of neutral zone
 const int SOFT_PUFF_THRESHOLD = 600; // Threshold for scroll up
-const int HARD_PUFF_THRESHOLD = 650; // Threshold for left click
+const int HARD_PUFF_THRESHOLD = 700; // Threshold for left click
+const int PRESSURE_DELAY = 50; // number of readings to check before sending commands
+const float ERROR_THRESHOLD = 0.6f; // readings must 
+
+volatile unsigned long long sampleBufferIndex = 0;
+volatile int sampleBuffer[PRESSURE_DELAY];
+
+const int NEUTRAL = 0;
+const int HARD_SIP = 1;
+const int SOFT_SIP = 2;
+const int HARD_PUFF = 3;
+const int SOFT_PUFF = 4;
+
+volatile int counts[5] = {PRESSURE_DELAY, 0,0,0,0};
+volatile float percentages[5] = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+
+// counts[CODE] is the count of our state
+// e.g. counts[NEUTRAL] gives us neutral
+
+const int UPDATE_INTERVAL = 8; // number of samples needed before updating state
+
 
 void setup() {
   // Initialize serial communication
@@ -111,26 +131,98 @@ void setup() {
   // Initialize timers
   sampleTimer = millis() + SAMPLE_PERIOD;
   cursorTimer = millis() + CURSOR_UPDATE_PERIOD;
+
+  //Serial.println("neutral,hardsip,softsip,hardpuff,softpuff");
+}
+
+void debugPrint(int value) {
+  //Serial.print(value);
+  //Serial.print(" ");
+  Serial.print(percentages[0]);
+  Serial.print(",");
+  Serial.print(percentages[1]);
+  Serial.print(",");
+  Serial.print(percentages[2]);
+  Serial.print(",");
+  Serial.print(percentages[3]);
+  Serial.print(",");
+  Serial.println(percentages[4]);
+
 }
 
 void loop() {
   // Sample pressure sensor at regular intervals
   if (millis() >= sampleTimer) {
-    samplePressure();
+    // samplePressure();
+
+    int value = analogRead(A0);
+    processPressure(value);
+
+    debugPrint(value);
+
+
     sampleTimer = millis() + SAMPLE_PERIOD;
   }
   
   // Process pressure samples when we have enough
+  /*
   if (sampleCounter >= SAMPLE_LENGTH) {
     processPressure(calculateAveragePressure());
     sampleCounter = 0;
-  }
+  }*/
   
   // Update cursor position at regular intervals
   if (millis() >= cursorTimer) {
     updateCursorPosition();
     cursorTimer = millis() + CURSOR_UPDATE_PERIOD;
   }
+}
+
+void addSample(int sample) {
+  int sampleCode = NEUTRAL;
+
+  // if its greater than neutral max, it must be a puff of some kind
+  if (sample > NEUTRAL_MAX) {
+    if (sample < SOFT_PUFF_THRESHOLD) {
+      sampleCode = SOFT_PUFF;
+    } else if (sample < HARD_PUFF_THRESHOLD) {
+      sampleCode = HARD_PUFF;
+    }
+  }
+  else if (sample < NEUTRAL_MIN) {
+    if (sample > SOFT_SIP_THRESHOLD) {
+      sampleCode = SOFT_SIP;
+    } else if (sample > HARD_SIP_THRESHOLD) {
+      sampleCode = HARD_SIP;
+    }
+  }
+
+  sampleBufferIndex++; // TODO overflow
+
+  int lastSampleCode = sampleBuffer[sampleBufferIndex % PRESSURE_DELAY];
+  counts[lastSampleCode]--; // remove overwritten count
+  counts[sampleCode]++; // add new count
+  sampleBuffer[sampleBufferIndex % PRESSURE_DELAY] = sampleCode;
+
+}
+
+void updatePercentages() {
+  for (int i = 0; i < 5; i++) {
+    percentages[i] = (float)counts[i] / (float)PRESSURE_DELAY;
+  }
+}
+
+int chooseState(int prevState) {
+  int newState = prevState;
+  float bestThreshold = 0.0f;
+
+  for (int i = 0; i < 5; i++) {
+    if (percentages[i] >= ERROR_THRESHOLD && percentages[i] > bestThreshold) {
+      newState = i;
+      bestThreshold = percentages[i];
+    }
+  }
+  return newState;
 }
 
 // Sample the pressure sensor
@@ -149,6 +241,7 @@ int calculateAveragePressure() {
 }
 
 // Process pressure reading and send commands via Serial
+/*
 void processPressure(int pressure) {
   // Hard sip - right click
   if (pressure < HARD_SIP_THRESHOLD) {
@@ -171,6 +264,27 @@ void processPressure(int pressure) {
     Serial.println("LEFT_CLICK_DOWN");
   }
 }
+*/
+
+
+void processPressure(int pressure) {
+  int lastState = sampleBuffer[sampleBufferIndex % PRESSURE_DELAY];
+
+  addSample(pressure);
+
+  if (sampleBufferIndex % UPDATE_INTERVAL == 0) {
+    updatePercentages();
+    int newState = chooseState(lastState);
+
+
+    const char* commands[5] = {"NEUTRAL", "RIGHT_CLICK_DOWN", "SCROLL_DOWN", "LEFT_CLICK_DOWN", "SCROLL_UP"};
+
+    
+    //Serial.println(commands[newState]);
+  }
+
+
+}
 
 // Read joystick and send cursor position via Serial
 void updateCursorPosition() {
@@ -192,6 +306,7 @@ void updateCursorPosition() {
   }
 }
 
+
 ```
 
 ### Python Application
@@ -210,7 +325,7 @@ try:
         print(f"Connected to COM4")
     except serial.SerialException as e:
         # If COM4 fails, try common alternatives
-        ports_to_try = ['COM3', 'COM5', '/dev/ttyUSB0', '/dev/ttyACM0']
+        ports_to_try = ['COM1', 'COM2', 'COM3', 'COM5', '/dev/ttyUSB0', '/dev/ttyACM0']
         for port in ports_to_try:
             try:
                 print(f"Trying to connect to {port}...")
@@ -274,6 +389,8 @@ def process_command(command):
                 autopy.mouse.click()  # Default is left click
                 left_click_active = True
                 last_left_click_time = current_time
+            else:
+                print("discarded left click")
         except Exception as e:
             print(f"Error with left click: {e}")
     
@@ -285,6 +402,9 @@ def process_command(command):
                 autopy.mouse.click(autopy.mouse.Button.RIGHT)
                 right_click_active = True
                 last_right_click_time = current_time
+            else:
+                print("discarded right click")
+                
         except Exception as e:
             print(f"Error with right click: {e}")
     
