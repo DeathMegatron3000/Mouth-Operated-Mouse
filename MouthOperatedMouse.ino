@@ -81,7 +81,9 @@ void loop() {
     int value = analogRead(A0);
     processPressure(value);
 
-    debugPrint(value);
+    //debugPrint(value);
+
+    //Serial.println(value);
 
 
     sampleTimer = millis() + SAMPLE_PERIOD;
@@ -203,7 +205,7 @@ void processPressure(int pressure) {
     const char* commands[5] = {"NEUTRAL", "RIGHT_CLICK_DOWN", "SCROLL_DOWN", "LEFT_CLICK_DOWN", "SCROLL_UP"};
 
     
-    //Serial.println(commands[newState]);
+    Serial.println(commands[newState]);
   }
 
 
