@@ -50,7 +50,7 @@ def process_command(command):
                 y = int(parts[2])
                 
                 x_move = int(x * sensitivity)
-                y_move = int(-y * sensitivity)
+                y_move = int(y * sensitivity)
                 
                 current_x, current_y = autopy.mouse.location()
                 
